@@ -1,35 +1,26 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Devdatta Deshpande <devdattad@checkpoint.com>
-Date: Tue, 15 Jul 2025 19:35:39 +0000
+Date: Sat, 19 Jul 2025 04:53:11 +0000
 Subject: [PATCH] FwaaS: Added a rewrite command
 
 ---
- build-root/dpdk_mlx_default.sh         |   1 +
  src/plugins/geneve/CMakeLists.txt      |   3 +
  src/plugins/geneve/decap.c             |  16 +++
  src/plugins/geneve/fwaas_cmd.c         | 150 +++++++++++++++++++++++++
- src/plugins/geneve/fwaas_cmd_handler.c |  67 +++++++++++
+ src/plugins/geneve/fwaas_cmd_handler.c |  73 ++++++++++++
  src/plugins/geneve/fwaas_cmd_handler.h |   9 ++
  src/plugins/geneve/geneve.c            |   6 +
  src/plugins/geneve/geneve.h            |  12 +-
  src/plugins/geneve/geneve_packet.h     |   4 +-
- src/plugins/geneve/options_parser.c    |  87 ++++++++++++++
+ src/plugins/geneve/options_parser.c    |  90 +++++++++++++++
  src/plugins/geneve/options_parser.h    |  40 +++++++
- 11 files changed, 391 insertions(+), 4 deletions(-)
- create mode 100644 build-root/dpdk_mlx_default.sh
+ 10 files changed, 399 insertions(+), 4 deletions(-)
  create mode 100644 src/plugins/geneve/fwaas_cmd.c
  create mode 100644 src/plugins/geneve/fwaas_cmd_handler.c
  create mode 100644 src/plugins/geneve/fwaas_cmd_handler.h
  create mode 100644 src/plugins/geneve/options_parser.c
  create mode 100644 src/plugins/geneve/options_parser.h
 
-diff --git a/build-root/dpdk_mlx_default.sh b/build-root/dpdk_mlx_default.sh
-new file mode 100644
-index 000000000..337f59df7
---- /dev/null
-+++ b/build-root/dpdk_mlx_default.sh
-@@ -0,0 +1 @@
-+DPDK_MLX_DEFAULT=y
 diff --git a/src/plugins/geneve/CMakeLists.txt b/src/plugins/geneve/CMakeLists.txt
 index 43eb01720..95a31dc3c 100644
 --- a/src/plugins/geneve/CMakeLists.txt
@@ -247,10 +238,10 @@ index 000000000..6b2ebafa5
 +};
 diff --git a/src/plugins/geneve/fwaas_cmd_handler.c b/src/plugins/geneve/fwaas_cmd_handler.c
 new file mode 100644
-index 000000000..9bac40cd9
+index 000000000..b41ce9989
 --- /dev/null
 +++ b/src/plugins/geneve/fwaas_cmd_handler.c
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,73 @@
 +#include <vlib/vlib.h>
 +
 +#include <geneve/fwaas_cmd_handler.h>
@@ -316,6 +307,12 @@ index 000000000..9bac40cd9
 +    }
 +
 +  vlib_buffer_advance (b, -(word) (advance_offset));
++
++  /*
++  * Reset the first word to original value as we are rerouting
++  * the same packet to different IP address.
++  */
++  vnet_geneve_hdr_1word_hton (geneve);
 +  return 1;
 +}
 diff --git a/src/plugins/geneve/fwaas_cmd_handler.h b/src/plugins/geneve/fwaas_cmd_handler.h
@@ -405,10 +402,10 @@ index fb21a311f..58391f6c2 100644
  
 diff --git a/src/plugins/geneve/options_parser.c b/src/plugins/geneve/options_parser.c
 new file mode 100644
-index 000000000..a578347a1
+index 000000000..5847ba3b2
 --- /dev/null
 +++ b/src/plugins/geneve/options_parser.c
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,90 @@
 +#include <vlib/vlib.h>
 +
 +#include <geneve/options_parser.h>
@@ -418,8 +415,12 @@ index 000000000..a578347a1
 +set_aws_glb_tlvs (geneve_options_t *geneve_opt, aws_glb_tlvs *tlvs)
 +{
 +  geneve_main_t *vxm = &geneve_main;
-+  if (geneve_opt->opt_class != AWS_GLBE_OPTION_CLASS)
++  u16 opt_class = clib_host_to_net_u16 (geneve_opt->opt_class);
++
++  if (opt_class != AWS_GLBE_OPTION_CLASS)
 +    {
++      vlib_log_debug (vxm->log_class,
++              "[FwaaS] opt class does not match: 0x%x", opt_class);
 +      return;
 +    }
 +
@@ -452,11 +453,10 @@ index 000000000..a578347a1
 +
 +  u8 res = ((geneve_opt->res_length & 0xe0) >> 5);
 +  option_len = (geneve_opt->res_length & 0x1F) * 4;
-+  geneve_opt->opt_class = clib_net_to_host_u16 (geneve_opt->opt_class);
 +
 +  vlib_log_debug (vxm->log_class,
 +                 "[FwaaS] Geneve option class: 0x%x type: 0x%x length: 0x%x, res: 0x%x",
-+                 geneve_opt->opt_class,
++                 clib_net_to_host_u16 (geneve_opt->opt_class),
 +                 geneve_opt->type,
 +                 option_len,
 +                 res);
