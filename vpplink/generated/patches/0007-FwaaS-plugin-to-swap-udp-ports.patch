@@ -1,0 +1,561 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Devdatta Deshpande <devdattad@checkpoint.com>
+Date: Sat, 6 Sep 2025 20:10:00 +0530
+Subject: [PATCH] FwaaS: plugin to swap udp ports
+
+---
+ src/plugins/fwaas_udp_swap/CMakeLists.txt     |  22 ++
+ src/plugins/fwaas_udp_swap/fwaas_udp_swap.c   |  65 ++++
+ src/plugins/fwaas_udp_swap/fwaas_udp_swap.h   |  60 ++++
+ .../fwaas_udp_swap/fwaas_udp_swap_cmd.c       |  71 +++++
+ src/plugins/fwaas_udp_swap/node.c             | 288 ++++++++++++++++++
+ 5 files changed, 506 insertions(+)
+ create mode 100644 src/plugins/fwaas_udp_swap/CMakeLists.txt
+ create mode 100644 src/plugins/fwaas_udp_swap/fwaas_udp_swap.c
+ create mode 100644 src/plugins/fwaas_udp_swap/fwaas_udp_swap.h
+ create mode 100644 src/plugins/fwaas_udp_swap/fwaas_udp_swap_cmd.c
+ create mode 100644 src/plugins/fwaas_udp_swap/node.c
+
+diff --git a/src/plugins/fwaas_udp_swap/CMakeLists.txt b/src/plugins/fwaas_udp_swap/CMakeLists.txt
+new file mode 100644
+index 000000000..ce54d5967
+--- /dev/null
++++ b/src/plugins/fwaas_udp_swap/CMakeLists.txt
+@@ -0,0 +1,22 @@
++# Copyright (c) <current-year> <your-organization>
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at:
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++add_vpp_plugin(fwaas_udp_swap
++  SOURCES
++  fwaas_udp_swap.c
++  fwaas_udp_swap_cmd.c
++  node.c
++
++  MULTIARCH_SOURCES
++  node.c
++)
+diff --git a/src/plugins/fwaas_udp_swap/fwaas_udp_swap.c b/src/plugins/fwaas_udp_swap/fwaas_udp_swap.c
+new file mode 100644
+index 000000000..b39e77ebd
+--- /dev/null
++++ b/src/plugins/fwaas_udp_swap/fwaas_udp_swap.c
+@@ -0,0 +1,65 @@
++/*
++ * fwaas_udp_swap.c - skeleton vpp engine plug-in
++ *
++ * Copyright (c) <current-year> <your-organization>
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <vnet/vnet.h>
++#include <vnet/plugin/plugin.h>
++#include <fwaas_udp_swap/fwaas_udp_swap.h>
++
++#include <vpp/app/version.h>
++
++fwaas_udp_swap_main_t fwaas_udp_swap_main;
++
++static clib_error_t * fwaas_udp_swap_init (vlib_main_t * vm)
++{
++  fwaas_udp_swap_main_t * vxm = &fwaas_udp_swap_main;
++  clib_error_t * error = 0;
++
++  vxm->vlib_main = vm;
++  vxm->vnet_main = vnet_get_main();
++  vxm->log_class = vlib_log_register_class ("fwaas-swap", 0);
++  vxm->gwlb_ip_map = hash_create (0, 0);
++
++  vlib_log_notice (vxm->log_class, "[FwaaS] udp swap init....");
++  return error;
++}
++
++VLIB_INIT_FUNCTION (fwaas_udp_swap_init);
++
++/* *INDENT-OFF* */
++VNET_FEATURE_INIT (fwaas_udp_swap, static) =
++{
++  .arc_name = "interface-output",
++  .node_name = "fwaas_udp_swap",
++  .runs_before = VNET_FEATURES ("interface-output-arc-end"),
++};
++/* *INDENT-ON */
++
++/* *INDENT-OFF* */
++VLIB_PLUGIN_REGISTER () =
++{
++  .version = VPP_BUILD_VER,
++  .description = "fwaas_udp_swap plugin swaps the udp ports if src port is 6081",
++};
++/* *INDENT-ON* */
++
++/*
++ * fd.io coding-style-patch-verification: ON
++ *
++ * Local Variables:
++ * eval: (c-set-style "gnu")
++ * End:
++ */
+\ No newline at end of file
+diff --git a/src/plugins/fwaas_udp_swap/fwaas_udp_swap.h b/src/plugins/fwaas_udp_swap/fwaas_udp_swap.h
+new file mode 100644
+index 000000000..e8ed24250
+--- /dev/null
++++ b/src/plugins/fwaas_udp_swap/fwaas_udp_swap.h
+@@ -0,0 +1,60 @@
++/*
++ * fwaas_udp_swap.h - skeleton vpp engine plug-in header file
++ *
++ * Copyright (c) <current-year> <your-organization>
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++#ifndef __included_fwaas_udp_swap_h__
++#define __included_fwaas_udp_swap_h__
++
++#include <vnet/vnet.h>
++#include <vnet/ip/ip.h>
++#include <vnet/ethernet/ethernet.h>
++
++#include <vppinfra/hash.h>
++#include <vppinfra/error.h>
++
++typedef struct {
++    /* API message ID base */
++    u16 msg_id_base;
++
++    /* on/off switch for the periodic function */
++    u8 periodic_timer_enabled;
++    /* Node index, non-zero if the periodic process has been created */
++    u32 periodic_node_index;
++
++    /* convenience */
++    vlib_main_t * vlib_main;
++    vnet_main_t * vnet_main;
++    ethernet_main_t * ethernet_main;
++
++     /* logging */
++    vlib_log_class_t log_class;
++
++    /* GWLB IP map for for udp swap cmd */
++    uword* gwlb_ip_map;
++} fwaas_udp_swap_main_t;
++
++extern fwaas_udp_swap_main_t fwaas_udp_swap_main;
++
++extern vlib_node_registration_t fwaas_udp_swap_node;
++
++#endif /* __included_fwaas_udp_swap_h__ */
++
++/*
++ * fd.io coding-style-patch-verification: ON
++ *
++ * Local Variables:
++ * eval: (c-set-style "gnu")
++ * End:
++ */
+\ No newline at end of file
+diff --git a/src/plugins/fwaas_udp_swap/fwaas_udp_swap_cmd.c b/src/plugins/fwaas_udp_swap/fwaas_udp_swap_cmd.c
+new file mode 100644
+index 000000000..bffb7738c
+--- /dev/null
++++ b/src/plugins/fwaas_udp_swap/fwaas_udp_swap_cmd.c
+@@ -0,0 +1,71 @@
++#include <vlib/vlib.h>
++
++#include <vnet/fib/fib_types.h>
++#include <arpa/inet.h>
++
++#include <fwaas_udp_swap/fwaas_udp_swap.h>
++
++static clib_error_t *
++vnet_fwaas_udp_swap_cmd (vlib_main_t *vm, unformat_input_t *main_input, vlib_cli_command_t *cmd)
++{
++  fwaas_udp_swap_main_t *vxm = &fwaas_udp_swap_main;
++  unformat_input_t _line_input, *line_input = &_line_input;
++  clib_error_t *error = NULL;
++  ip4_address_t gwlb_addr;
++  u8 is_del = 0;
++
++  if (!unformat_user (main_input, unformat_line_input, line_input))
++    return 0;
++
++  gwlb_addr.as_u32 = 0;
++  while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
++    {
++      if (unformat (line_input, "del"))
++        is_del = 1;
++      else if (unformat (line_input, "add"))
++        is_del = 0;
++      else if (unformat (line_input, "gwlb-ip %U",
++          unformat_ip4_address, &gwlb_addr))
++      ;
++      else
++        {
++          error = unformat_parse_error (line_input);
++          goto done;
++        }
++    }
++  if (gwlb_addr.as_u32 == 0)
++    {
++      error = clib_error_return (0, "GWLB IP address is missing");
++      goto done;
++    }
++
++  if (is_del)
++    {
++      hash_unset (vxm->gwlb_ip_map, gwlb_addr.as_u32);
++    }
++  else
++    {
++      hash_set1 (vxm->gwlb_ip_map, gwlb_addr.as_u32);
++    }
++
++done:
++  unformat_free (line_input);
++  return error;
++}
++/*?
++ * This command is used to store IP address for GWLB
++?*/
++VLIB_CLI_COMMAND (fwaas_udp_swap, static) = {
++  .path = "fwaas swap",
++  .short_help = "fwaas swap [add|del] gwlb-ip <destination ip>",
++  .function = vnet_fwaas_udp_swap_cmd,
++};
++/* *INDENT-ON* */
++
++/*
++ * fd.io coding-style-patch-verification: ON
++ *
++ * Local Variables:
++ * eval: (c-set-style "gnu")
++ * End:
++ */
+\ No newline at end of file
+diff --git a/src/plugins/fwaas_udp_swap/node.c b/src/plugins/fwaas_udp_swap/node.c
+new file mode 100644
+index 000000000..433cefc90
+--- /dev/null
++++ b/src/plugins/fwaas_udp_swap/node.c
+@@ -0,0 +1,288 @@
++/*
++ * node.c - skeleton vpp engine plug-in dual-loop node skeleton
++ *
++ * Copyright (c) <current-year> <your-organization>
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at:
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++#include <vlib/vlib.h>
++#include <vnet/vnet.h>
++#include <vnet/pg/pg.h>
++#include <vnet/udp/udp_local.h>
++#include <vppinfra/error.h>
++#include <fwaas_udp_swap/fwaas_udp_swap.h>
++
++#include <arpa/inet.h>
++
++typedef struct
++{
++  u8 udp_port_swapped;
++} fwaas_udp_swap_trace_t;
++
++#ifndef CLIB_MARCH_VARIANT
++
++/* packet trace format function */
++static u8 * format_fwaas_udp_swap_trace (u8 * s, va_list * args)
++{
++  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
++  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
++  fwaas_udp_swap_trace_t * t = va_arg (*args, fwaas_udp_swap_trace_t *);
++  if (t->udp_port_swapped == 1)
++    {
++      s = format (s, "FWAAS_UDP_SWAP: UDP ports swapped = true\n");
++    }
++  else
++    {
++      s = format (s, "FWAAS_UDP_SWAP: UDP ports swapped = false\n");
++    }
++
++  return s;
++}
++
++#endif /* CLIB_MARCH_VARIANT */
++
++#define foreach_fwaas_udp_swap_error \
++_(SWAPPED, "AWS GWLB upd port swapped")
++
++typedef enum {
++#define _(sym,str) FWAAS_UDP_SWAP_ERROR_##sym,
++  foreach_fwaas_udp_swap_error
++#undef _
++  FWAAS_UDP_SWAP_N_ERROR,
++} fwaas_udp_swap_error_t;
++
++#ifndef CLIB_MARCH_VARIANT
++static char * fwaas_udp_swap_error_strings[] =
++{
++#define _(sym,string) string,
++  foreach_fwaas_udp_swap_error
++#undef _
++};
++#endif /* CLIB_MARCH_VARIANT */
++
++typedef enum
++{
++  FWAAS_UDP_SWAP_NEXT_INTERFACE_OUTPUT,
++  FWAAS_UDP_SWAP_N_NEXT,
++} fwaas_udp_swap_next_t;
++
++static_always_inline void *
++get_l3 (vlib_buffer_t *b)
++{
++ /* Prefer an explicit L3 offset if your VPP has it populated */
++ if (PREDICT_TRUE(vnet_buffer(b)->l3_hdr_offset))
++   return (u8 *)vlib_buffer_get_current(b) + vnet_buffer(b)->l3_hdr_offset;
++ /* Otherwise: L2 length is set by earlier rewrite/classify stages */
++ return (u8 *)vlib_buffer_get_current(b) + vnet_buffer(b)->l2.l2_len;
++}
++
++static_always_inline u8
++swap_udp_ports (vlib_buffer_t *b)
++{
++  fwaas_udp_swap_main_t *vxm = &fwaas_udp_swap_main;
++  u8 result = 0;
++  vlib_main_t *vm = vlib_get_main();
++
++  if (PREDICT_FALSE (b->flags & VNET_BUFFER_F_IS_IP6))
++    {
++      vlib_log_debug (vxm->log_class, "[FwaaS-out] ignoring IPv6");
++      goto done; /* ignore ip6 */
++    }
++
++  ip4_header_t *ip4 = get_l3(b);
++
++  if (PREDICT_FALSE (ip4->protocol != IP_PROTOCOL_UDP))
++    {
++      vlib_log_debug (vxm->log_class, "[FwaaS-out] ignoring non udp protocol: %u", ip4->protocol);
++      goto done; /* not udp protocol */
++    }
++
++  char dst_addr[INET_ADDRSTRLEN];
++  char src_addr[INET_ADDRSTRLEN];
++  inet_ntop(AF_INET, &(ip4->dst_address.as_u32), dst_addr, INET_ADDRSTRLEN);
++  inet_ntop(AF_INET, &(ip4->src_address.as_u32), src_addr, INET_ADDRSTRLEN);
++
++  uword *entry = hash_get (vxm->gwlb_ip_map, ip4->dst_address.as_u32);
++  if (entry == NULL)
++    {
++      /* Do not change the dst port if the dst ip does not match gwlb ip*/
++      vlib_log_debug (vxm->log_class, "[FwaaS-out] ignoring non-gwlb ip address src: %s, dst: %s", src_addr, dst_addr);
++      goto done;
++    }
++
++  vlib_log_debug (vxm->log_class, "[FwaaS-out] setting dst port to 6081 for src: %s, dst: %s", src_addr, dst_addr);
++  udp_header_t *udp = (void*) ip4 + sizeof (ip4_header_t);
++
++  udp->dst_port = clib_host_to_net_u16 (UDP_DST_PORT_geneve);
++  vlib_log_debug (vxm->log_class,
++      "[FwaaS-out] udp port swapped, new src: %u, new dst: %u",
++      clib_net_to_host_u16 (udp->src_port),
++      clib_net_to_host_u16 (udp->dst_port));
++
++  udp->checksum = 0;
++  udp->checksum = ip4_tcp_udp_compute_checksum (vm, b, ip4);
++  if (udp->checksum == 0)
++    udp->checksum = 0xffff;
++
++  vlib_log_debug (vxm->log_class,
++        "[FwaaS-out] udp checksum updated: 0x%x", udp->checksum);
++
++  result = 1;
++
++  done:
++    return result;
++}
++
++VLIB_NODE_FN (fwaas_udp_swap_node) (vlib_main_t * vm,
++                                    vlib_node_runtime_t * node,
++                                    vlib_frame_t * frame)
++{
++  u32 n_left_from, * from, * to_next;
++  fwaas_udp_swap_next_t next_index;
++
++  from = vlib_frame_vector_args (frame);
++  n_left_from = frame->n_vectors;
++  next_index = node->cached_next_index;
++
++  while (n_left_from > 0)
++    {
++      u32 n_left_to_next;
++      u32 next0 = FWAAS_UDP_SWAP_NEXT_INTERFACE_OUTPUT;
++      u32 next1 = FWAAS_UDP_SWAP_NEXT_INTERFACE_OUTPUT;
++
++      vlib_get_next_frame (vm, node, next_index,
++                            to_next, n_left_to_next);
++
++      while (n_left_from >= 4 && n_left_to_next >= 2)
++        {
++          u32 bi0, bi1;
++          vlib_buffer_t * b0, * b1;
++
++          /* Prefetch next iteration. */
++          {
++            vlib_buffer_t * p2, * p3;
++
++            p2 = vlib_get_buffer (vm, from[2]);
++            p3 = vlib_get_buffer (vm, from[3]);
++
++            vlib_prefetch_buffer_header (p2, LOAD);
++            vlib_prefetch_buffer_header (p3, LOAD);
++
++            CLIB_PREFETCH (p2->data, CLIB_CACHE_LINE_BYTES, STORE);
++            CLIB_PREFETCH (p3->data, CLIB_CACHE_LINE_BYTES, STORE);
++          }
++
++          /* speculatively enqueue b0 and b1 to the current next frame */
++          to_next[0] = bi0 = from[0];
++          to_next[1] = bi1 = from[1];
++          from += 2;
++          to_next += 2;
++          n_left_from -= 2;
++          n_left_to_next -= 2;
++
++          b0 = vlib_get_buffer (vm, bi0);
++          u8 swapped0 = swap_udp_ports (b0);
++
++          b1 = vlib_get_buffer (vm, bi1);
++          u8 swapped1 = swap_udp_ports (b1);
++
++          vnet_feature_next (&next0, b0);
++          vnet_feature_next (&next1, b1);
++
++          if (PREDICT_FALSE((node->flags & VLIB_NODE_FLAG_TRACE)))
++            {
++              if (b0->flags & VLIB_BUFFER_IS_TRACED)
++                {
++                    fwaas_udp_swap_trace_t *t =
++                      vlib_add_trace (vm, node, b0, sizeof (fwaas_udp_swap_trace_t));
++                    t->udp_port_swapped = swapped0;
++                  }
++                if (b1->flags & VLIB_BUFFER_IS_TRACED)
++                  {
++                    fwaas_udp_swap_trace_t *t =
++                      vlib_add_trace (vm, node, b1, sizeof (fwaas_udp_swap_trace_t));
++                    t->udp_port_swapped = swapped1;
++                  }
++              }
++            /* verify speculative enqueues, maybe switch current next frame */
++            vlib_validate_buffer_enqueue_x2 (vm, node, next_index,
++                                             to_next, n_left_to_next,
++                                             bi0, bi1, next0, next1);
++        }
++
++      while (n_left_from > 0 && n_left_to_next > 0)
++        {
++          u32 bi0;
++          vlib_buffer_t * b0;
++          u32 next0 = FWAAS_UDP_SWAP_NEXT_INTERFACE_OUTPUT;
++
++          /* speculatively enqueue b0 to the current next frame */
++          bi0 = from[0];
++          to_next[0] = bi0;
++          from += 1;
++          to_next += 1;
++          n_left_from -= 1;
++          n_left_to_next -= 1;
++
++          b0 = vlib_get_buffer (vm, bi0);
++          u8 swapped = swap_udp_ports (b0);
++          vnet_feature_next (&next0, b0);
++
++          if (PREDICT_FALSE((node->flags & VLIB_NODE_FLAG_TRACE)
++                            && (b0->flags & VLIB_BUFFER_IS_TRACED)))
++            {
++              fwaas_udp_swap_trace_t *t =
++                vlib_add_trace (vm, node, b0, sizeof (fwaas_udp_swap_trace_t));
++              t->udp_port_swapped = swapped;
++            }
++
++          /* verify speculative enqueue, maybe switch current next frame */
++          vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
++                                            to_next, n_left_to_next,
++                                            bi0, next0);
++        }
++
++      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
++    }
++
++  return frame->n_vectors;
++}
++
++/* *INDENT-OFF* */
++#ifndef CLIB_MARCH_VARIANT
++
++/* FIXME: Register separate node for IPv6 */
++VLIB_REGISTER_NODE (fwaas_udp_swap_node) =
++{
++  .name = "fwaas_udp_swap",
++  .flags = VLIB_NODE_FLAG_TRACE_SUPPORTED,
++  .vector_size = sizeof (u32),
++  .format_trace = format_fwaas_udp_swap_trace,
++  .type = VLIB_NODE_TYPE_INTERNAL,
++
++  .n_errors = ARRAY_LEN(fwaas_udp_swap_error_strings),
++  .error_strings = fwaas_udp_swap_error_strings,
++
++  .n_next_nodes = FWAAS_UDP_SWAP_N_NEXT,
++  .next_nodes = {
++        [FWAAS_UDP_SWAP_NEXT_INTERFACE_OUTPUT] = "interface-output",
++  },
++};
++#endif /* CLIB_MARCH_VARIANT */
++/* *INDENT-ON* */
++/*
++ * fd.io coding-style-patch-verification: ON
++ *
++ * Local Variables:
++ * eval: (c-set-style "gnu")
++ * End:
++ */
+\ No newline at end of file
+-- 
+2.42.0
+
